@@ -4,6 +4,7 @@ import Exa from "exa-js";
 import FirecrawlApp from '@mendable/firecrawl-js';
 import { z } from "zod";
 import { Logger } from "@/utils/logger";
+import { normalizeToRAGChunk } from "@/lib/utils";
 
 const logger = new Logger("ServerAction:fetchAvenData");
 
@@ -35,9 +36,8 @@ export async function fetchAvenStaticData() {
     const results = result?.results || [];
     logger.info("fetchAvenStaticData - Returning structured results", { count: results.length });
 
-    return results.map(({ id, title, url, summary }) => ({
-      id, title, url, summary
-    }));
+    // Remove 'id' field from static data, keep url as unique identifier
+    return results.map(({ id, ...rest }) => ({ ...rest }));
   } catch (error) {
     logger.error("fetchAvenStaticData - Failed to fetch Aven content", error);
     throw error;
@@ -49,6 +49,7 @@ const schema = z.object({
   url: z.string().describe("The URL of the page"),
   summary: z.string().describe("A detailed summary of the content, serving as context for an LLM RAG pipeline"),
   section_heading: z.string().optional().describe("Section or heading for this chunk"),
+  content: z.string().describe("The full text under this heading"),
   date: z.string().optional().describe("Date published or updated"),
   tags: z.array(z.string()).optional().describe("Relevant topics or keywords"),
   source_type: z.string().optional().describe("Type of source, e.g., faq, review, product"),
@@ -60,13 +61,31 @@ export async function fetchAvenDynamicData () {
     logger.action('fetchAvenDynamicData - Started fetching Aven content')
     const app = new FirecrawlApp({ apiKey: process.env.FIRECRAWL_API_KEY! })
 
+    const systemPrompt = `Extract the main content of the page, breaking it into logical sections based on headings (e.g., h1, h2, h3). For each section, return:
+      - section_heading: The heading text (if any)
+      - content: The full text under this heading
+      - summary: A concise summary of the section (1-2 sentences)
+      - title: The page title
+      - url: The page URL
+      - date: The date published or updated (if available)
+      - tags: Any relevant topics or keywords
+      - source_type: The type of page (e.g., faq, review, product, etc.)
+      - author: The author (if available)
+      Return an array of these section objects as JSON.
+    `;
+
     const scrapeHomeResult = await app.scrapeUrl("https://www.aven.com/", {
       formats: ["json"],
-      jsonOptions: { schema: schema },
+      jsonOptions: { schema, systemPrompt },
       onlyMainContent: true,
       parsePDF: false,
       maxAge: 14400000
     });
+
+    logger.info('fetchAvenDynamicData - Raw home result', { scrapeHomeResult });
+    if (scrapeHomeResult.success && Array.isArray(scrapeHomeResult.json)) {
+      logger.info('fetchAvenDynamicData - Home json length', { length: scrapeHomeResult.json.length });
+    }
 
     if (!scrapeHomeResult.success) {
       throw new Error(`Failed to crawl: ${scrapeHomeResult.error}`)
@@ -74,20 +93,26 @@ export async function fetchAvenDynamicData () {
 
     const scrapeAboutResult = await app.scrapeUrl('https://www.aven.com/about', {
       formats: [ "json" ],
-      jsonOptions: { schema: schema },
+      jsonOptions: { schema, systemPrompt },
       onlyMainContent: true,
       parsePDF: false,
       maxAge: 14400000
     })
 
+    logger.info('fetchAvenDynamicData - Raw about result', { scrapeAboutResult });
+    if (scrapeAboutResult.success && Array.isArray(scrapeAboutResult.json)) {
+      logger.info('fetchAvenDynamicData - About json length', { length: scrapeAboutResult.json.length });
+    }
+
     if (!scrapeAboutResult.success) {
       throw new Error(`Failed to crawl: ${scrapeAboutResult.error}`)
     }
 
-    return {
-      home: scrapeHomeResult,
-      about: scrapeAboutResult
-    }
+    const homeChunk = scrapeHomeResult.json; // this is the RAG chunk object
+    const aboutChunk = scrapeAboutResult.json; // this is the RAG chunk object
+
+    // Return as an array (filter out any missing)
+    return [homeChunk, aboutChunk].filter(Boolean);
 
   } catch (error) {
     logger.error('fetchAvenDynamicData - Failed to fetch Aven content', error)
@@ -103,33 +128,10 @@ export async function fetchAvenCombinedData() {
       fetchAvenDynamicData()
     ]);
 
-    // Normalize dynamic data to match static format
-    const dynamicItems = [];
-    if (dynamicData.home?.json) {
-      const home = dynamicData.home.json;
-      dynamicItems.push({
-        id: 'aven.com/',
-        title: home.title || 'Aven Home',
-        url: home.url || 'https://www.aven.com/',
-        summary: home.summary || '',
-        source: 'dynamic'
-      });
-    }
-    if (dynamicData.about?.json) {
-      const about = dynamicData.about.json;
-      dynamicItems.push({
-        id: 'aven.com/about',
-        title: about.title || 'Aven About',
-        url: about.url || 'https://www.aven.com/about',
-        summary: about.summary || '',
-        source: 'dynamic'
-      });
-    }
+    // Normalize and add source field
+    const staticItems = staticData.map(item => normalizeToRAGChunk({ ...item, source: 'static' }, 'static'));
+    const dynamicItems = (dynamicData || []).map(item => normalizeToRAGChunk({ ...item, source: 'dynamic' }, 'dynamic'));
 
-    // Tag static data
-    const staticItems = staticData.map(item => ({ ...item, source: 'static' }));
-
-    // Combine and return
     return [...staticItems, ...dynamicItems];
   } catch (error) {
     logger.error("fetchAvenCombinedData - Failed to combine data", error);
