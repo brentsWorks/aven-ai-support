@@ -41,6 +41,32 @@ export function chunkText(text: string, maxChars = 1200): string[] {
   return chunks;
 }
 
+// Robust sentence splitter using regex (handles ., !, ? and newlines)
+function splitIntoSentences(text: string): string[] {
+  // This regex splits on sentence-ending punctuation followed by a space or end of string
+  return text.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) || [text];
+}
+
+// Semantic chunking: group sentences into ~1200 char chunks, never splitting a sentence
+export function semanticChunkContent(content: string, maxChars = 1200): string[] {
+  const sentences = splitIntoSentences(content);
+  const chunks: string[] = [];
+  let currentChunk = "";
+
+  for (const sentence of sentences) {
+    // If adding this sentence would exceed maxChars, start a new chunk
+    if ((currentChunk + sentence).length > maxChars && currentChunk.length > 0) {
+      chunks.push(currentChunk.trim());
+      currentChunk = "";
+    }
+    currentChunk += sentence;
+  }
+  if (currentChunk.trim().length > 0) {
+    chunks.push(currentChunk.trim());
+  }
+  return chunks;
+}
+
 // Returns a single RAGChunk (no chunking)
 export function normalizeToRAGChunk(item: any, source: "static" | "dynamic"): RAGChunk {
   return {

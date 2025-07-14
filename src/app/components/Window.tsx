@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { fetchAvenCombinedData } from "../actions/fetchData";
 import { fetchAvenDynamicData } from "../actions/fetchData";
-import { getEmbedding } from "../actions/embedData";
+import { getEmbedding, getEmbeddingsBatch } from "../actions/embedData";
+import { upsertChunksToPineconeAction } from "../actions/upsertAction";
 import { normalizeText } from "@/lib/utils";
 
 export function Window() {
@@ -12,21 +13,13 @@ export function Window() {
   const [isPending, startTransition] = useTransition();
   const [embedding, setEmbedding] = useState<number[] | null>(null);
   const [embedStatus, setEmbedStatus] = useState<string>("");
-  const [debugMsg, setDebugMsg] = useState<string>("");
-  const [normalizedText, setNormalizedText] = useState<string>("");
+  const [batchEmbeddings, setBatchEmbeddings] = useState<(number[] | null)[] | null>(null);
+  const [upsertStatus, setUpsertStatus] = useState<string>("");
 
   const handleFetch = () => {
     startTransition(async () => {
       const result = await fetchAvenCombinedData();
       setData(result);
-    });
-  };
-
-  const handleFetchDynamic = () => {
-    startTransition(async () => {
-      const dynamicData = await fetchAvenDynamicData();
-      setData(dynamicData);
-      setDebugMsg(`Fetched ${dynamicData.length} dynamic items.`);
     });
   };
 
@@ -54,14 +47,28 @@ export function Window() {
     }
   };
 
-  const handleNormalizeFirst = () => {
-    if (data.length > 0) {
-      // Try to find a content or text field
-      const item = data[0];
-      const raw = item.content || item.text || item.summary || "";
-      setNormalizedText(normalizeText(raw));
-    } else {
-      setNormalizedText("");
+  const handleBatchEmbed = async () => {
+    setEmbedStatus("Batch embedding...");
+    setBatchEmbeddings(null);
+    try {
+      const chunks = data.length > 0 ? data : await fetchAvenCombinedData();
+      const contents = chunks.map((chunk: any) => chunk.content);
+      const embeddings = await getEmbeddingsBatch(contents);
+      setBatchEmbeddings(embeddings);
+      setEmbedStatus(`Batch embedding successful! Embedded ${embeddings.length} chunks.`);
+    } catch (err) {
+      setEmbedStatus("Error during batch embedding.");
+    }
+  };
+
+  const handleUpsertToPinecone = async () => {
+    setUpsertStatus("Upserting to Pinecone...");
+    try {
+      const chunks = data.length > 0 ? data : await fetchAvenCombinedData();
+      await upsertChunksToPineconeAction(chunks);
+      setUpsertStatus(`Upserted ${chunks.length} chunks to Pinecone successfully!`);
+    } catch (err) {
+      setUpsertStatus("Error during upsert to Pinecone.");
     }
   };
 
@@ -74,33 +81,29 @@ export function Window() {
       <Button onClick={handleFetch} disabled={isPending}>
         {isPending ? "Loading..." : "Fetch Combined Data"}
       </Button>
-      <Button onClick={handleFetchDynamic} style={{ marginLeft: 16 }}>
-        Fetch Only Dynamic Data
-      </Button>
       <Button onClick={handleEmbed} style={{ marginLeft: 16 }}>
         Test Embedding
       </Button>
-      <Button onClick={handleNormalizeFirst} style={{ marginLeft: 16 }}>
-        Show Normalized Text (First Chunk)
+      <Button onClick={handleBatchEmbed} style={{ marginLeft: 16 }}>
+        Batch Embed All Chunks
+      </Button>
+      <Button onClick={handleUpsertToPinecone} style={{ marginLeft: 16 }}>
+        Upsert All Chunks to Pinecone
       </Button>
       {embedStatus && <div style={{ marginTop: 16, fontWeight: 500 }}>{embedStatus}</div>}
-      {debugMsg && <div style={{ marginTop: 16, color: '#b91c1c', fontWeight: 500 }}>{debugMsg}</div>}
+      {upsertStatus && <div style={{ marginTop: 16, fontWeight: 500 }}>{upsertStatus}</div>}
       {embedding && (
         <div style={{ marginTop: 8 }}>
           <div>Embedding (first 5 values):</div>
           <pre>{JSON.stringify(embedding.slice(0, 5))} ...</pre>
         </div>
       )}
-      {normalizedText && (
-        <div style={{ marginTop: 24 }}>
-          <Card>
-            <CardHeader>
-              <CardTitle>Normalized Text (First Chunk)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <pre style={{ fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{normalizedText}</pre>
-            </CardContent>
-          </Card>
+      {batchEmbeddings && (
+        <div style={{ marginTop: 16 }}>
+          <div>Batch Embeddings (first 5, first 5 values each):</div>
+          <pre style={{ fontSize: 12 }}>
+            {JSON.stringify(batchEmbeddings.slice(0, 5).map(e => e ? e.slice(0, 5) : null), null, 2)} ...
+          </pre>
         </div>
       )}
       <div style={{ marginTop: 32 }}>

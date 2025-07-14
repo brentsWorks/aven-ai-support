@@ -4,7 +4,7 @@ import Exa from "exa-js";
 import FirecrawlApp from '@mendable/firecrawl-js';
 import { z } from "zod";
 import { Logger } from "@/utils/logger";
-import { normalizeToRAGChunk } from "@/lib/utils";
+import { normalizeToRAGChunk, semanticChunkContent, type RAGChunk } from "@/lib/utils";
 
 const logger = new Logger("ServerAction:fetchAvenData");
 
@@ -132,7 +132,20 @@ export async function fetchAvenCombinedData() {
     const staticItems = staticData.map(item => normalizeToRAGChunk({ ...item, source: 'static' }, 'static'));
     const dynamicItems = (dynamicData || []).map(item => normalizeToRAGChunk({ ...item, source: 'dynamic' }, 'dynamic'));
 
-    return [...staticItems, ...dynamicItems];
+    // Chunk each normalized card's content using semanticChunkContent
+    function chunkCard(card: RAGChunk) {
+      const chunks = semanticChunkContent(card.content, 1200);
+      return chunks.map((chunk, idx) => ({
+        ...card,
+        id: `${card.url}-chunk${idx}`,
+        content: chunk
+      }));
+    }
+
+    const chunkedStatic = staticItems.flatMap(chunkCard);
+    const chunkedDynamic = dynamicItems.flatMap(chunkCard);
+
+    return [...chunkedStatic, ...chunkedDynamic];
   } catch (error) {
     logger.error("fetchAvenCombinedData - Failed to combine data", error);
     throw error;
