@@ -19,12 +19,7 @@ export async function upsertChunksToPinecone(chunks: RAGChunk[]) {
       metadata: {
         url: chunk.url ?? '',
         title: chunk.title ?? '',
-        section_heading: chunk.section_heading ?? '',
         summary: chunk.summary ?? '',
-        date: chunk.date ?? '',
-        tags: chunk.tags ?? [],
-        source_type: chunk.source_type ?? '',
-        author: chunk.author ?? '',
         source: chunk.source ?? '',
       }
     }))
