@@ -15,7 +15,7 @@ export async function upsertChunksToPinecone(chunks: RAGChunk[]) {
   const records = chunks
     .map((chunk, idx) => ({
       id: chunk.id,
-      values: embeddings[idx] ?? undefined,
+      values: embeddings?.[idx] ?? undefined,
       metadata: {
         url: chunk.url ?? '',
         title: chunk.title ?? '',

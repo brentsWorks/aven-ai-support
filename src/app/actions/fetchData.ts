@@ -23,7 +23,7 @@ const schema = z.object({
 const urls = [
   "https://www.aven.com/support",
   "https://www.aven.com/education",
-  "https://www.aven.com/contact",
+  "https://www.aven.com/contact", 
   "https://www.aven.com/reviews",
   "https://www.aven.com/app",
   "https://www.aven.com/",

@@ -10,6 +10,7 @@ const envSchema = z.object({
   FIRECRAWL_API_KEY: z.string(),
   OPENAI_API_KEY: z.string(),
   PINECONE_API_KEY: z.string(),
+  GOOGLE_API_KEY: z.string(),
   VAPI_PUBLIC_API_KEY: z.string(),
   VAPI_ASSISTANT_ID: z.string(),
 });
@@ -24,6 +25,7 @@ const validateEnv = () => {
       FIRECRAWL_API_KEY: process.env.FIRECRAWL_API_KEY,
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
       PINECONE_API_KEY: process.env.PINECONE_API_KEY,
+      GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
       VAPI_PUBLIC_API_KEY: process.env.VAPI_PUBLIC_API_KEY,
       VAPI_ASSISTANT_ID: process.env.VAPI_ASSISTANT_ID,
     };

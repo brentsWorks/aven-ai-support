@@ -10,6 +10,8 @@
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\""
   },
   "dependencies": {
+    "@google/genai": "^1.10.0",
+    "@google/generative-ai": "^0.24.1",
     "@hookform/resolvers": "^4.1.0",
     "@mendable/firecrawl-js": "^1.29.1",
     "@pinecone-database/pinecone": "^6.1.1",
