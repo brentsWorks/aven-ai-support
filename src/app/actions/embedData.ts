@@ -14,7 +14,7 @@ export async function getEmbedding(input: string): Promise<number[] | null> {
     const response = await openai.embeddings.create({
       model: 'text-embedding-3-small',
       input: input,
-      dimensions: 1536,
+      dimensions: 768,
     });
 
     const embedding = response.data[0]?.embedding;
@@ -40,7 +40,7 @@ export async function getEmbeddingsBatch(inputs: string[]): Promise<number[][] |
     const response = await openai.embeddings.create({
       model: 'text-embedding-3-small',
       input: inputs,
-      dimensions: 1536,
+      dimensions: 768,
     });
 
     const embeddings = response.data.map(item => item.embedding);

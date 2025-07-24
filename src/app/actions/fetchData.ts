@@ -1,75 +1,98 @@
 "use server";
 
 import FirecrawlApp from '@mendable/firecrawl-js';
-import { z } from "zod";
 import { Logger } from "@/utils/logger";
 import { normalizeAndChunk, type RAGChunk } from "@/lib/utils";
 import { upsertChunksToPineconeAction } from "./upsertAction";
 
 const logger = new Logger("ServerAction:fetchData");
 
-const schema = z.object({
-  title: z.string().describe("The title of the page or section"),
-  url: z.string().describe("The URL of the page"),
-  summary: z.string().describe("A detailed summary of the content, serving as context for an LLM RAG pipeline"),
-  section_heading: z.string().optional().describe("Section or heading for this chunk"),
-  content: z.string().describe("The full text under this heading"),
-  date: z.string().optional().describe("Date published or updated"),
-  tags: z.array(z.string()).optional().describe("Relevant topics or keywords"),
-  source_type: z.string().optional().describe("Type of source, e.g., faq, review, product"),
-  author: z.string().optional().describe("Author of the content, if available")
-});
-
-const urls = [
-  "https://www.aven.com/support",
-  "https://www.aven.com/education",
-  "https://www.aven.com/contact", 
-  "https://www.aven.com/reviews",
-  "https://www.aven.com/app",
-  "https://www.aven.com/",
-  "https://www.aven.com/about"
-];
-
 export async function fetchData() {
   try {
-    logger.action("fetchData - Started Firecrawl scraping for all URLs");
+    logger.action("fetchData - Started Firecrawl crawling for Aven website");
     const app = new FirecrawlApp({ apiKey: process.env.FIRECRAWL_API_KEY! });
-    const systemPrompt = `Extract the main content of the page, breaking it into logical sections based on headings (e.g., h1, h2, h3). For each section, return:
-      - section_heading: The heading text (if any)
-      - content: The full text under this heading
-      - summary: A concise summary of the section (1-2 sentences)
-      - title: The page title
-      - url: The page URL
-      - date: The date published or updated (if available)
-      - tags: Any relevant topics or keywords
-      - source_type: The type of page (e.g., faq, review, product, etc.)
-      - author: The author (if available)
-      Return an array of these section objects as JSON.`;
 
     let allChunks: RAGChunk[] = [];
-    for (const url of urls) {
-      try {
-        const result = await app.scrapeUrl(url, {
-          formats: ["json"],
-          jsonOptions: { schema, systemPrompt },
+    
+    try {
+      const result = await app.crawlUrl('https://www.aven.com/', {
+        limit: 20, // Increased limit to get more pages
+        includePaths: ['/support', '/education', '/contact', '/reviews', '/app', '/about'], // Focus on key pages
+        scrapeOptions: {
+          formats: ["markdown"],
           onlyMainContent: true,
           parsePDF: false,
-          maxAge: 14400000
-        });
-        logger.info(`fetchData - Raw result for ${url}`, { result });
-        if (result.success && result.json) {
-          const normalizedChunks = normalizeAndChunk({
-            ...result.json,
-            url: result.json.url === 'https://www.aven.com/' ? url : result.json.url
-          });
-          allChunks.push(...normalizedChunks);
-        } else {
-          logger.error(`Failed to scrape ${url}: ${result.error || 'Unknown error'}`);
+          maxAge: 14400000,
+        },
+      });
+      
+      logger.info(`fetchData - Crawl completed`, { 
+        success: result.success,
+      });
+
+      if (result.success && result.data) {
+        let processedPages = 0;
+        for (const page of result.data) {
+          try {
+            // Check if page has content and is from Aven domain
+            if (page.markdown && 
+                page.metadata?.sourceURL && 
+                page.metadata.sourceURL.includes('aven.com') &&
+                page.metadata.statusCode === 200) {
+              
+              // Create chunks from this page
+              const pageChunks = normalizeAndChunk({
+                title: page.metadata.title || 'Aven Page',
+                url: page.metadata.sourceURL,
+                content: page.markdown,
+                summary: page.metadata.description || `Content from ${page.metadata.title || 'Aven website'}`,
+                source: 'firecrawl'
+              });
+              
+              allChunks.push(...pageChunks);
+              processedPages++;
+              
+              logger.info(`✅ Processed: ${page.metadata.sourceURL}`, {
+                title: page.metadata.title,
+                chunks: pageChunks.length,
+                contentLength: page.markdown.length,
+                description: page.metadata.description?.substring(0, 100)
+              });
+            } else {
+              // Log skipped pages for debugging
+              logger.warn(`⏭️  Skipped page:`, {
+                url: page.metadata?.sourceURL || 'unknown',
+                hasMarkdown: !!page.markdown,
+                statusCode: page.metadata?.statusCode,
+                reason: !page.markdown ? 'no content' : 
+                       !page.metadata?.sourceURL?.includes('aven.com') ? 'not aven domain' :
+                       page.metadata?.statusCode !== 200 ? 'bad status code' : 'unknown'
+              });
+            }
+          } catch (pageError) {
+            logger.error(`Error processing page ${page.metadata?.sourceURL}:`, pageError);
+          }
         }
-      } catch (err) {
-        logger.error(`Exception scraping ${url}: ${err instanceof Error ? err.message : String(err)}`);
+        
+        logger.info(`📊 Crawl processing summary:`, {
+          totalPages: result.data.length,
+          processedPages,
+          totalChunks: allChunks.length,
+          creditsUsed: result.creditsUsed
+        });
+        
+      } else if (!result.success) {
+        logger.warn("Crawl failed or incomplete");
+        // Handle partial results if needed
+      } else {
+        logger.error(`Crawl failed or incomplete`);
       }
+      
+    } catch (err) {
+      logger.error(`Exception during crawl: ${err instanceof Error ? err.message : String(err)}`);
     }
+    
+    logger.action(`fetchData - Completed with ${allChunks.length} total chunks`);
     return allChunks;
   } catch (error) {
     logger.error("fetchData - Failed to fetch data", error);
@@ -78,7 +101,29 @@ export async function fetchData() {
 }
 
 export async function fetchEmbedAndUpsert() {
-  const chunks = await fetchData();
-  await upsertChunksToPineconeAction(chunks);
-  return { success: true, count: chunks.length };
+  try {
+    logger.action("fetchEmbedAndUpsert - Starting full pipeline");
+    const chunks = await fetchData();
+    
+    if (chunks.length === 0) {
+      logger.warn("No chunks to embed and upsert");
+      return { success: false, count: 0, message: "No content was extracted" };
+    }
+    
+    await upsertChunksToPineconeAction(chunks);
+    logger.action(`fetchEmbedAndUpsert - Successfully processed ${chunks.length} chunks`);
+    
+    return { 
+      success: true, 
+      count: chunks.length,
+      message: `Successfully embedded and stored ${chunks.length} content chunks`
+    };
+  } catch (error) {
+    logger.error("fetchEmbedAndUpsert - Pipeline failed", error);
+    return { 
+      success: false, 
+      count: 0, 
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
 }

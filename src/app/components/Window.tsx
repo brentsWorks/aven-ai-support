@@ -32,7 +32,7 @@ export function Window() {
     <div className="max-w-3xl mx-auto p-6 space-y-8">
       {/* VoiceWidget Section */}
       <VapiWidget 
-        apiKey={process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY as string}
+        apiKey={process.env.NEXT_PUBLIC_VAPI_PUBLIC_API_KEY as string}
         assistantId={process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID as string}
       />
 

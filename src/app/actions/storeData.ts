@@ -19,11 +19,12 @@ export async function upsertChunksToPinecone(chunks: RAGChunk[]) {
       metadata: {
         url: chunk.url ?? '',
         title: chunk.title ?? '',
-        summary: chunk.summary ?? '',
+        content: chunk.content ?? '',
         source: chunk.source ?? '',
       }
     }))
     .filter(record => Array.isArray(record.values));
   // 3. Upsert to Pinecone
-  await pc.index(indexName).upsert(records);
+  const namespace = pc.index(indexName, "https://aven-rag-jot4yxr.svc.aped-4627-b74a.pinecone.io").namespace("aven");
+  await namespace.upsert(records);
 }

@@ -10,16 +10,16 @@ const pinecone = new Pinecone({
   apiKey: env.PINECONE_API_KEY ?? '',
 });
 
-const namespace = pinecone.index("aven-rag").namespace("default");
+const namespace = pinecone.index("aven-rag", "https://aven-rag-jot4yxr.svc.aped-4627-b74a.pinecone.io").namespace("aven");
 
 const ai = new GoogleGenerativeAI(env.GOOGLE_API_KEY ?? '');
 const embeddingModel = ai.getGenerativeModel({
   model: "gemini-embedding-001",
 });
 
-const gemini = new OpenAI({
+const openai = new OpenAI({
   apiKey: env.OPENAI_API_KEY,
-  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/" + env.GOOGLE_API_KEY,
+  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
 });
 
 export async function POST(req: NextRequest) {
@@ -47,12 +47,21 @@ export async function POST(req: NextRequest) {
     const query = lastMessage.content;
     logger.info("Query", { query });
 
-    const embedding = await embeddingModel.embedContent(query);
-    logger.info("Embedding", { embedding });
+    const openai = new OpenAI({
+      apiKey: env.OPENAI_API_KEY,
+    });
 
+    const embeddingResponse = await openai.embeddings.create({
+      model: 'text-embedding-3-small',
+      input: query,
+      dimensions: 768,
+    });
+    const embedding = embeddingResponse.data[0]?.embedding;
+    logger.info("embedding values", { embeddingLength: embedding?.length, embeddingPreview: embedding?.slice(0, 10) });
+    
     const results = await namespace.query({
-      vector: embedding.embedding.values,
-      topK: 2,
+      vector: embedding,
+      topK: 5,
       includeMetadata: true,
     });
 
@@ -60,18 +69,20 @@ export async function POST(req: NextRequest) {
 
     const context = results.matches?.map((match) => match.metadata?.content).join("\n");
     logger.info("Context", { context });
-    const geminiPrompt = `Answer my question based on the following context: ${context}
+    
+    const openaiPrompt = `Answer my question based on the following context: ${context}
+
     Question: ${query}
     Answer: `;
 
-    const prompt = await gemini.chat.completions.create({
+    const prompt = await openai.chat.completions.create({
       messages: [
         {
           role: "user",
-          content: geminiPrompt,
+          content: openaiPrompt,
         },
       ],
-      model: "gemini-2.0-flash-lite",
+      model: "gpt-4o",
       max_tokens: 500,
       temperature: 0.7,
     });
@@ -87,46 +98,86 @@ export async function POST(req: NextRequest) {
     });
 
     if (stream) {
-      const completionStream = await gemini.chat.completions.create({
-        model: "gemini-2.0-flash-lite",
+      const completionStream = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
         messages: modifiedMessages,
         max_tokens: max_tokens || 150,
         temperature: temperature || 0.7,
         stream: true,
       } as OpenAI.Chat.ChatCompletionCreateParamsStreaming);
-      // Create a readable stream for the response
-      const encoder = new TextEncoder();
 
+      const encoder = new TextEncoder();
+      
       const streamResponse = new ReadableStream({
         async start(controller) {
+          let fullResponse = "";
+          
           try {
             for await (const chunk of completionStream) {
+              // Check if the controller is still active before writing
+              if (controller.desiredSize === null) {
+                // Controller is closed, exit the loop
+                break;
+              }
+              
               const content = chunk.choices?.[0]?.delta?.content;
               if (content) {
-                controller.enqueue(encoder.encode(content));
+                fullResponse += content;
+                
+                // Send the actual OpenAI chunk format for VAPI compatibility
+                const sseData = `data: ${JSON.stringify(chunk)}\n\n`;
+                
+                try {
+                  controller.enqueue(encoder.encode(sseData));
+                } catch (enqueueError) {
+                  // Controller already closed, break out
+                  break;
+                }
               }
             }
-            controller.close();
+            
+            logger.info("Generated response", { fullResponse });
+            
+            // Only close if controller is still active
+            if (controller.desiredSize !== null) {
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              controller.close();
+            }
+            
           } catch (err) {
-            controller.error(err);
+            logger.error("Streaming error", err);
+            // Only send error if controller is still active
+            if (controller.desiredSize !== null) {
+              try {
+                controller.error(err);
+              } catch (errorError) {
+                // Controller already closed, ignore
+              }
+            }
           }
         },
       });
 
       return new Response(streamResponse, {
         headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "Transfer-Encoding": "chunked",
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
         },
       });
     } else {
-      const completion = await gemini.chat.completions.create({
-        model: "gemini-2.0-flash-lite",
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
         messages: modifiedMessages,
         max_tokens: max_tokens || 150,
         temperature: temperature || 0.7,
         stream: false,
       } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
+      const response = completion.choices[0]?.message?.content;
+      
+      // Log the response
+      logger.info("Generated response", { response });
+      
       return NextResponse.json(completion);
     }
   } catch (e) {
