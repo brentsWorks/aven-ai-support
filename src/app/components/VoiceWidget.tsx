@@ -1,10 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Vapi from '@vapi-ai/web';
+import { Mic, MicOff, Phone, PhoneOff } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 
 interface VapiWidgetProps {
   apiKey: string;
   assistantId: string;
   config?: Record<string, unknown>;
+}
+
+interface Message {
+  role: string;
+  text: string;
+  timestamp: number;
+  isComplete?: boolean;
 }
 
 const VapiWidget: React.FC<VapiWidgetProps> = ({ 
@@ -74,140 +84,88 @@ const VapiWidget: React.FC<VapiWidgetProps> = ({
   };
 
   return (
-    <div style={{
-      position: 'fixed',
-      bottom: '24px',
-      right: '24px',
-      zIndex: 1000,
-      fontFamily: 'Arial, sans-serif'
-    }}>
+    <div className="w-full max-w-md mx-auto">
       {!isConnected ? (
-        <button
-          onClick={startCall}
-          style={{
-            background: '#12A594',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '50px',
-            padding: '16px 24px',
-            fontSize: '16px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            boxShadow: '0 4px 12px rgba(18, 165, 148, 0.3)',
-            transition: 'all 0.3s ease',
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.transform = 'translateY(-2px)';
-            e.currentTarget.style.boxShadow = '0 6px 16px rgba(18, 165, 148, 0.4)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 4px 12px rgba(18, 165, 148, 0.3)';
-          }}
-        >
-          🎤 Talk to Assistant
-        </button>
-      ) : (
-        <div style={{
-          background: '#fff',
-          borderRadius: '12px',
-          padding: '20px',
-          width: '320px',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
-          border: '1px solid #e1e5e9'
-        }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '16px'
-          }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}>
-              <div style={{
-                width: '12px',
-                height: '12px',
-                borderRadius: '50%',
-                background: isSpeaking ? '#ff4444' : '#12A594',
-                animation: isSpeaking ? 'pulse 1s infinite' : 'none'
-              }}></div>
-              <span style={{ fontWeight: 'bold', color: '#333' }}>
-                {isSpeaking ? 'Assistant Speaking...' : 'Listening...'}
-              </span>
+        // Start Call Button
+        <div className="text-center space-y-6">
+          <div className="relative flex justify-center">
+            {/* Outer glow rings */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-32 h-32 rounded-full bg-primary/10 animate-ping animation-duration-2000"></div>
             </div>
-            <button
-              onClick={endCall}
-              style={{
-                background: '#ff4444',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '6px 12px',
-                fontSize: '12px',
-                cursor: 'pointer'
-              }}
-            >
-              End Call
-            </button>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-28 h-28 rounded-full bg-primary/20 animate-ping animation-duration-1500 animation-delay-500"></div>
+            </div>
+            
+            {/* Button container with enhanced effects */}
+            <div className="relative">
+              {/* Background glow */}
+              <div className="absolute -inset-2 rounded-full bg-gradient-to-r from-primary via-primary/90 to-primary opacity-75 blur-xl"></div>
+              <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-primary/80 via-primary to-primary/80 opacity-90 blur-lg"></div>
+              
+              {/* Main button */}
+              <Button
+                onClick={startCall}
+                size="lg"
+                className="relative h-24 w-24 rounded-full bg-gradient-to-br from-primary via-primary/95 to-primary/90 
+                          hover:from-primary/90 hover:via-primary hover:to-primary 
+                          shadow-2xl hover:shadow-primary/60 
+                          transition-all duration-500 group 
+                          border-4 border-white/20 
+                          hover:border-white/30
+                          hover:scale-110
+                          active:scale-105"
+              >
+                {/* Icon with enhanced effects */}
+                <div className="relative">
+                  <Mic className="h-10 w-10 text-primary-foreground group-hover:scale-125 group-hover:rotate-12 transition-all duration-300 drop-shadow-2xl filter" />
+                  {/* Icon glow */}
+                  <div className="absolute inset-0 h-10 w-10">
+                    <Mic className="h-10 w-10 text-white/50 blur-sm" />
+                  </div>
+                </div>
+              </Button>
+            </div>
           </div>
+        </div>
+      ) : (
+        // Active Call Interface
+        <div className="space-y-4">
           
-          <div style={{
-            maxHeight: '200px',
-            overflowY: 'auto',
-            marginBottom: '12px',
-            padding: '8px',
-            background: '#f8f9fa',
-            borderRadius: '8px'
-          }}>
-            {transcript.length === 0 ? (
-              <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>
-                Conversation will appear here...
-              </p>
-            ) : (
-              transcript.map((msg, i) => (
-                <div
-                  key={i}
-                  style={{
-                    marginBottom: '8px',
-                    textAlign: msg.role === 'user' ? 'right' : 'left'
-                  }}
-                >
-                  <span style={{
-                    background: msg.role === 'user' ? '#12A594' : '#333',
-                    color: '#fff',
-                    padding: '8px 12px',
-                    borderRadius: '12px',
-                    display: 'inline-block',
-                    fontSize: '14px',
-                    maxWidth: '80%'
-                  }}>
-                    {msg.text}
+          {/* Call Status Header */}
+          <Card className="bg-gradient-to-r from-primary/10 to-primary/5 border-primary/20">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`h-3 w-3 rounded-full ${isSpeaking ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
+                  <span className="font-semibold text-sm">
+                    {isSpeaking ? 'Assistant Speaking...' : 'Listening...'}
                   </span>
                 </div>
-              ))
-            )}
+                <Button
+                  onClick={endCall}
+                  variant="destructive"
+                  size="sm"
+                  className="gap-2"
+                >
+                  <PhoneOff className="h-4 w-4" />
+                  End Call
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Active Call Controls */}
+          <div className="flex justify-center gap-4">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+              <span>Recording active</span>
+            </div>
           </div>
         </div>
       )}
-      
-      <style>{`
-        @keyframes pulse {
-          0% { opacity: 1; }
-          50% { opacity: 0.5; }
-          100% { opacity: 1; }
-        }
-      `}</style>
     </div>
   );
 };
 
 export default VapiWidget;
-
-// Usage in your app:
-// <VapiWidget 
-//   apiKey="" 
-//   assistantId="" 
-// />

@@ -3,7 +3,6 @@ import { Logger } from "@/utils/logger";
 import { OpenAI } from "openai";
 import { Pinecone } from "@pinecone-database/pinecone";
 import { env } from "@/config/env";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 const logger = new Logger("API:Chat");
 
 const pinecone = new Pinecone({
@@ -11,16 +10,6 @@ const pinecone = new Pinecone({
 });
 
 const namespace = pinecone.index("aven-rag", "https://aven-rag-jot4yxr.svc.aped-4627-b74a.pinecone.io").namespace("aven");
-
-const ai = new GoogleGenerativeAI(env.GOOGLE_API_KEY ?? '');
-const embeddingModel = ai.getGenerativeModel({
-  model: "gemini-embedding-001",
-});
-
-const openai = new OpenAI({
-  apiKey: env.OPENAI_API_KEY,
-  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-});
 
 export async function POST(req: NextRequest) {
   if (req.method !== "POST") {
