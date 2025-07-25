@@ -155,7 +155,7 @@ export function semanticChunkContent(
 }
 
 // Enhanced normalize and chunk function with AI cleansing
-export async function normalizeAndChunk(item: any): Promise<RAGChunk[]> {
+export async function normalizeAndChunk(item: RAGChunk): Promise<RAGChunk[]> {
   console.log(`🧹 Cleansing content for: ${item.title || 'Unknown'}`);
   
   // First, cleanse the content using AI
@@ -180,7 +180,7 @@ export async function normalizeAndChunk(item: any): Promise<RAGChunk[]> {
 }
 
 // Synchronous version for backward compatibility (uses basic cleansing)
-export function normalizeAndChunkSync(item: any): RAGChunk[] {
+export function normalizeAndChunkSync(item: RAGChunk): RAGChunk[] {
   const basicCleanedContent = basicContentCleanse(item.content ?? "");
   const normalizedContent = normalizeText(basicCleanedContent);
   const chunks = semanticChunkContent(normalizedContent, 1200);

@@ -56,7 +56,7 @@ async function collectMetrics(): Promise<ProjectMetrics> {
   
   // Health check
   console.log('\n🏥 Running Health Check...');
-  const healthStatus = await healthCheck();
+  await healthCheck();
 
   // Calculate metrics
   const metrics: ProjectMetrics = {

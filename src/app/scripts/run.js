@@ -5,7 +5,10 @@
  * Usage: node src/app/scripts/run.js
  */
 
+ // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { execSync } = require("child_process");
+ 
+ // eslint-disable-next-line @typescript-eslint/no-require-imports
 const path = require("path");
 
 console.log("🚀 Aven Data Management Script Runner");

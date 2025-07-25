@@ -21,13 +21,10 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   try {
     const {
-      model,
       messages,
       max_tokens,
       temperature,
       stream,
-      call,
-      ...restParams
     } = body;
 
     const lastMessage = messages?.[messages.length - 1];
@@ -131,6 +128,7 @@ export async function POST(req: NextRequest) {
                   controller.enqueue(encoder.encode(sseData));
                 } catch (enqueueError) {
                   // Controller already closed, break out
+                  console.error("Error enqueuing chunk", enqueueError);
                   break;
                 }
               }
@@ -149,8 +147,9 @@ export async function POST(req: NextRequest) {
             if (controller.desiredSize !== null) {
               try {
                 controller.error(err);
-              } catch (errorError) {
+              } catch (error) {
                 // Controller already closed, ignore
+                console.error("Error closing controller", error);
               }
             }
           }
