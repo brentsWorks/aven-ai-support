@@ -122,9 +122,9 @@ Aven AI Support is designed to provide instant customer support through both voi
 
 ## 📊 Data Management
 
-### Automated Content Pipeline
+### Automated Content Pipeline with AI Cleansing
 
-The application includes a comprehensive data management system that processes Aven's website content:
+The application includes a comprehensive data management system that processes Aven's website content with AI-powered content cleansing for optimal quality:
 
 #### Quick Start - Run Data Pipeline
 
@@ -135,17 +135,31 @@ node src/app/scripts/run.js
 
 #### What the Pipeline Does
 
-1. **🔍 Health Check** - Verifies needed services (OpenAI, Firecrawl)
-2. **🌐 Content Crawling** - Extracts content from Aven website
-3. **🧠 Embedding Generation** - Creates vector embeddings for semantic search
-4. **💾 Data Storage** - Stores processed content in Pinecone vector database
-5. **✅ Verification** - Tests the knowledge base with sample queries
+1. **🔍 Health Check** - Verifies needed services (OpenAI, Firecrawl, Pinecone)
+2. **🌐 Content Crawling** - Extracts content from Aven website using Firecrawl
+3. **🧹 AI Content Cleansing** - Uses GPT-4o to remove navigation noise while preserving expertise
+4. **📦 Smart Chunking** - Creates semantic chunks from cleaned content
+5. **🧠 Embedding Generation** - Creates vector embeddings for semantic search
+6. **💾 Data Storage** - Stores processed content in Pinecone vector database
+7. **✅ Verification** - Tests the knowledge base with sample queries
+
+#### AI Content Cleansing
+
+The pipeline uses GPT-4o to intelligently clean scraped content:
+
+**📊 Typical Results:**
+- **Content Reduction**: 20-30% (removes noise, keeps expertise)
+- **Quality Improvement**: Much cleaner, more focused content
+- **Better Embeddings**: Higher quality semantic search results
 
 #### Alternative Execution Methods
 
 ```bash
 # Using tsx directly
 npx tsx src/app/scripts/dataManagement.ts
+
+# Test content cleansing only
+npx tsx src/app/scripts/testCleansing.ts
 
 # Using ts-node
 npx ts-node src/app/scripts/dataManagement.ts
@@ -160,6 +174,9 @@ npx ts-node src/app/scripts/dataManagement.ts
 📊 Step 1: Running health check...
 ✅ All services are healthy
 🌐 Step 2: Fetching data from Aven website...
+🧹 Cleansing content for: How It Works
+✨ Cleaned content: 2239 → 1720 chars
+✅ Processed: https://www.aven.com/education
 📦 Successfully fetched 45 chunks
 🧠 Step 3: Generating embeddings and storing in Pinecone...
 🔍 Step 4: Verifying data storage with test query...
@@ -192,16 +209,36 @@ import {
   upsertChunksToPinecone,
   querySimilarContent,
   healthCheck,
+  testContentCleansing,
+  verifyPineconeData,
 } from "@/app/scripts/dataManagement";
 
 // Run complete pipeline
 const result = await main();
+
+// Test AI content cleansing
+const cleansingResult = await testContentCleansing();
+
+// Verify Pinecone data
+const pineconeData = await verifyPineconeData();
 
 // Or use individual functions
 const chunks = await fetchData();
 const embedding = await getEmbedding("How do I reset my password?");
 const results = await querySimilarContent("password help", 5);
 ```
+
+### Content Processing Workflow
+
+The optimized workflow processes content efficiently:
+
+1. **🌐 Crawl Page** - Extract raw content from Aven website
+2. **🧹 Clean Content** - AI-powered cleansing (1 API call per page)
+3. **📦 Create Chunks** - Semantic chunking of cleaned content
+4. **🧠 Generate Embeddings** - Vector embeddings for search
+5. **💾 Store in Pinecone** - Index for RAG retrieval
+
+This approach ensures maximum efficiency with minimal API calls while maintaining high content quality.
 
 ## 📁 Project Structure
 
