@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
           content: openaiPrompt,
         },
       ],
-      model: "gpt-4o",
+      model: "gpt-4o-mini",
       max_tokens: 500,
       temperature: 0.7,
     });
@@ -166,7 +166,7 @@ export async function POST(req: NextRequest) {
       });
     } else {
       const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model: "gpt-4o-mini", // Keep consistent
         messages: modifiedMessages,
         max_tokens: max_tokens || 150,
         temperature: temperature || 0.7,

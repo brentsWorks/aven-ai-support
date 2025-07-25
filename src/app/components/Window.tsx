@@ -73,13 +73,8 @@ export function Window() {
                       {/* Main Voice Widget */}
                       <div className="relative z-10 transform transition-transform duration-300 hover:scale-105">
                         <VapiWidget
-                          apiKey={
-                            process.env
-                              .NEXT_PUBLIC_VAPI_PUBLIC_API_KEY as string
-                          }
-                          assistantId={
-                            process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID as string
-                          }
+                          apiKey={process.env.NEXT_PUBLIC_VAPI_PUBLIC_API_KEY!}
+                          assistantId={process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID!}
                         />
                       </div>
                     </div>

@@ -11,7 +11,7 @@ import FirecrawlApp from "@mendable/firecrawl-js";
 import { Pinecone } from "@pinecone-database/pinecone";
 import { OpenAI } from "openai";
 import { Logger } from "@/utils/logger";
-import { normalizeAndChunk, type RAGChunk } from "@/lib/utils";
+import { normalizeAndChunkSync, type RAGChunk } from "@/lib/utils";
 
 // Initialize services
 const logger = new Logger("DataManagement");
@@ -128,31 +128,41 @@ export async function fetchData(): Promise<RAGChunk[]> {
         let processedPages = 0;
         for (const page of result.data) {
           try {
-            if (
-              page.markdown &&
-              page.metadata?.sourceURL &&
-              page.metadata.sourceURL.includes("aven.com") &&
-              page.metadata.statusCode === 200
-            ) {
-              const pageChunks = normalizeAndChunk({
-                title: page.metadata.title || "Aven Page",
+            if (page.markdown && 
+                page.metadata?.sourceURL && 
+                page.metadata.sourceURL.includes('aven.com') &&
+                page.metadata.statusCode === 200) {
+              
+              // Step 1: Clean the entire page content first (1 API call per page)
+              logger.info(`🧹 Cleansing content for: ${page.metadata.title || 'Unknown'}`);
+              const { cleanseContent } = await import("@/lib/utils");
+              const cleanedContent = await cleanseContent(page.markdown);
+              
+              logger.info(`✨ Cleaned content: ${page.markdown.length} → ${cleanedContent.length} chars`);
+              
+              // Step 2: Create chunks from the cleaned content (no API calls)
+              const pageChunks = normalizeAndChunkSync({
+                title: page.metadata.title || 'Aven Page',
                 url: page.metadata.sourceURL,
-                content: page.markdown,
-                summary:
-                  page.metadata.description ||
-                  `Content from ${page.metadata.title || "Aven website"}`,
-                source: "firecrawl",
+                content: cleanedContent, // Use cleaned content
+                summary: page.metadata.description || `Content from ${page.metadata.title || 'Aven website'}`,
+                source: 'firecrawl'
               });
-
+              
               allChunks.push(...pageChunks);
               processedPages++;
-
+              
               logger.info(`✅ Processed: ${page.metadata.sourceURL}`, {
                 title: page.metadata.title,
                 chunks: pageChunks.length,
-                contentLength: page.markdown.length,
-                description: page.metadata.description?.substring(0, 100),
+                originalLength: page.markdown.length,
+                cleanedLength: cleanedContent.length,
+                description: page.metadata.description?.substring(0, 100)
               });
+              
+              // Add small delay to avoid overwhelming OpenAI API
+              await new Promise(resolve => setTimeout(resolve, 100));
+              
             } else {
               logger.warn(`⏭️  Skipped page:`, {
                 url: page.metadata?.sourceURL || "unknown",
@@ -386,6 +396,184 @@ export async function healthCheck() {
 
   logger.info("Health check completed", status);
   return status;
+}
+
+/**
+ * Verify what's stored in Pinecone
+ */
+export async function verifyPineconeData() {
+  try {
+    logger.action("🔍 Verifying Pinecone data...");
+    
+    const { Pinecone } = await import("@pinecone-database/pinecone");
+    const { env } = await import("@/config/env");
+    
+    const pinecone = new Pinecone({
+      apiKey: env.PINECONE_API_KEY ?? "",
+    });
+
+    const namespace = pinecone
+      .index("aven-rag", "https://aven-rag-jot4yxr.svc.aped-4627-b74a.pinecone.io")
+      .namespace("aven");
+
+    // Query with a simple test
+    const testQuery = "What is Aven?";
+    
+    const openai = new OpenAI({
+      apiKey: env.OPENAI_API_KEY,
+    });
+
+    const embeddingResponse = await openai.embeddings.create({
+      model: "text-embedding-3-small",
+      input: testQuery,
+      dimensions: 768,
+    });
+    
+    const embedding = embeddingResponse.data[0]?.embedding;
+    
+    const results = await namespace.query({
+      vector: embedding,
+      topK: 3,
+      includeMetadata: true,
+    });
+
+    logger.info("Pinecone verification results:", {
+      totalMatches: results.matches?.length,
+      matches: results.matches?.map(match => ({
+        id: match.id,
+        score: match.score,
+        hasMetadata: !!match.metadata,
+        metadataKeys: match.metadata ? Object.keys(match.metadata) : [],
+        contentLength: typeof match.metadata?.content === 'string' ? match.metadata.content.length : 0,
+        contentPreview: typeof match.metadata?.content === 'string' ? match.metadata.content.substring(0, 100) : 'No content'
+      }))
+    });
+
+    return results;
+  } catch (error) {
+    logger.error("❌ Pinecone verification failed", error);
+    throw error;
+  }
+}
+
+/**
+ * Test function to demonstrate content cleansing and chunking
+ */
+export async function testContentCleansing() {
+  const sampleDirtyContent = `- [Card](https://www.aven.com/) - [How It Works](https://www.aven.com/education) - [Reviews](https://www.aven.com/reviews) - [Support](https://www.aven.com/support) - [App](https://www.aven.com/app) - [About Us](https://www.aven.com/about) - [Contact Us](https://www.aven.com/contact) - [Sign In](https://my.aven.com/) 
+
+# How It Works 
+
+## It works like a regular Visa® Credit Card, but taps into your home equity to get you really, really low rates. 
+
+![Credit Card Icon](https://www.aven.com/img/visaCard.ad0e3175.svg) 
+
+### What is the Aven Home Card?
+
+Aven is a credit card that lets you use your home equity to get really low rates. Our unique approach combines the convenience of a credit card with the savings of a home equity line of credit (HELOC).
+
+### How does it work?
+
+Aven combines the convenience of a credit card with the savings of a home equity line of credit (HELOC). It works like any other credit card where you can make everyday purchases and earn unlimited 2% cash back on all purchases.
+
+**Key Features:**
+- **Low Rates**: Starting as low as 3.99% APR (variable rate)
+- **Cash Back**: Unlimited 2% cash back on all purchases
+- **No Annual Fee**: $0 annual fee for qualified customers
+- **Home Equity**: Uses your home equity for collateral, not your credit score
+- **Flexible Payments**: Choose between minimum payments or fixed monthly payments
+
+### Do you offer a fixed rate?
+
+For Cash Outs and Balance Transfers, you have the option of fixed monthly payments (Aven Simple Loan) with rates starting at 4.99% APR. This provides predictable monthly payments and helps you pay down debt faster.
+
+### Eligibility Requirements
+
+To qualify for the Aven Home Card, you need:
+- At least 20% equity in your home
+- A minimum credit score of 680
+- Stable income and employment
+- Primary residence (not investment properties)
+
+### How is this different from a traditional HELOC?
+
+Unlike traditional HELOCs that require separate applications and draw periods, the Aven Home Card works like a regular credit card. You can use it anywhere Visa is accepted, and you only pay interest on what you spend.
+
+[Learn More](https://www.aven.com/education) [Apply Now](https://www.aven.com/apply) [Support](https://www.aven.com/support)`;
+
+  try {
+    logger.action("🧪 Testing content cleansing and chunking...");
+    console.log("\n📝 ORIGINAL CONTENT:");
+    console.log("=" + "=".repeat(50));
+    console.log(sampleDirtyContent);
+    console.log("=" + "=".repeat(50));
+    console.log(`Length: ${sampleDirtyContent.length} characters\n`);
+
+    // Step 1: Clean the content (1 API call)
+    const { cleanseContent } = await import("@/lib/utils");
+    const cleanedContent = await cleanseContent(sampleDirtyContent);
+
+    console.log("✨ CLEANED CONTENT:");
+    console.log("=" + "=".repeat(50));
+    console.log(cleanedContent);
+    console.log("=" + "=".repeat(50));
+    console.log(`Length: ${cleanedContent.length} characters\n`);
+
+    // Step 2: Create chunks from cleaned content (no API calls)
+    const chunks = normalizeAndChunkSync({
+      title: "Test Page",
+      url: "https://test.com",
+      content: cleanedContent,
+      source: "test"
+    });
+
+    console.log("📦 CHUNKS CREATED:");
+    console.log("=" + "=".repeat(50));
+    chunks.forEach((chunk, idx) => {
+      console.log(`Chunk ${idx + 1} (${chunk.content.length} chars):`);
+      console.log(chunk.content.substring(0, 150) + "...");
+      console.log("");
+    });
+    console.log("=" + "=".repeat(50));
+
+    const reductionPercent = Math.round(((sampleDirtyContent.length - cleanedContent.length) / sampleDirtyContent.length) * 100);
+    
+    logger.info("🎯 Content processing results:", {
+      originalLength: sampleDirtyContent.length,
+      cleanedLength: cleanedContent.length,
+      reduction: `${reductionPercent}%`,
+      chunksCreated: chunks.length,
+      averageChunkSize: Math.round(cleanedContent.length / chunks.length),
+      removedElements: [
+        "Navigation links",
+        "Image references", 
+        "URL artifacts",
+        "Formatting noise"
+      ],
+      preservedElements: [
+        "Aven expertise",
+        "Product details",
+        "Rates and benefits",
+        "Eligibility requirements",
+        "Technical specifications"
+      ]
+    });
+
+    return {
+      original: sampleDirtyContent,
+      cleaned: cleanedContent,
+      chunks: chunks,
+      stats: {
+        originalLength: sampleDirtyContent.length,
+        cleanedLength: cleanedContent.length,
+        reductionPercent,
+        chunksCreated: chunks.length
+      }
+    };
+  } catch (error) {
+    logger.error("🚨 Content cleansing test failed", error);
+    throw error;
+  }
 }
 
 // =================================
