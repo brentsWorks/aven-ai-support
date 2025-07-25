@@ -6,10 +6,12 @@ import { env } from "@/config/env";
 const logger = new Logger("API:Chat");
 
 const pinecone = new Pinecone({
-  apiKey: env.PINECONE_API_KEY ?? '',
+  apiKey: env.PINECONE_API_KEY ?? "",
 });
 
-const namespace = pinecone.index("aven-rag", "https://aven-rag-jot4yxr.svc.aped-4627-b74a.pinecone.io").namespace("aven");
+const namespace = pinecone
+  .index("aven-rag", "https://aven-rag-jot4yxr.svc.aped-4627-b74a.pinecone.io")
+  .namespace("aven");
 
 export async function POST(req: NextRequest) {
   if (req.method !== "POST") {
@@ -30,7 +32,10 @@ export async function POST(req: NextRequest) {
 
     const lastMessage = messages?.[messages.length - 1];
     if (!lastMessage?.content) {
-      return NextResponse.json({ error: "No content in last message" }, { status: 400 });
+      return NextResponse.json(
+        { error: "No content in last message" },
+        { status: 400 }
+      );
     }
 
     const query = lastMessage.content;
@@ -41,13 +46,16 @@ export async function POST(req: NextRequest) {
     });
 
     const embeddingResponse = await openai.embeddings.create({
-      model: 'text-embedding-3-small',
+      model: "text-embedding-3-small",
       input: query,
       dimensions: 768,
     });
     const embedding = embeddingResponse.data[0]?.embedding;
-    logger.info("embedding values", { embeddingLength: embedding?.length, embeddingPreview: embedding?.slice(0, 10) });
-    
+    logger.info("embedding values", {
+      embeddingLength: embedding?.length,
+      embeddingPreview: embedding?.slice(0, 10),
+    });
+
     const results = await namespace.query({
       vector: embedding,
       topK: 5,
@@ -56,9 +64,11 @@ export async function POST(req: NextRequest) {
 
     logger.info("Results", results);
 
-    const context = results.matches?.map((match) => match.metadata?.content).join("\n");
+    const context = results.matches
+      ?.map(match => match.metadata?.content)
+      .join("\n");
     logger.info("Context", { context });
-    
+
     const openaiPrompt = `Answer my question based on the following context: ${context}
 
     Question: ${query}
@@ -83,7 +93,8 @@ export async function POST(req: NextRequest) {
     ];
 
     logger.info("Creating completion...", {
-      stream, messagesCount: modifiedMessages.length,
+      stream,
+      messagesCount: modifiedMessages.length,
     });
 
     if (stream) {
@@ -96,11 +107,11 @@ export async function POST(req: NextRequest) {
       } as OpenAI.Chat.ChatCompletionCreateParamsStreaming);
 
       const encoder = new TextEncoder();
-      
+
       const streamResponse = new ReadableStream({
         async start(controller) {
           let fullResponse = "";
-          
+
           try {
             for await (const chunk of completionStream) {
               // Check if the controller is still active before writing
@@ -108,14 +119,14 @@ export async function POST(req: NextRequest) {
                 // Controller is closed, exit the loop
                 break;
               }
-              
+
               const content = chunk.choices?.[0]?.delta?.content;
               if (content) {
                 fullResponse += content;
-                
+
                 // Send the actual OpenAI chunk format for VAPI compatibility
                 const sseData = `data: ${JSON.stringify(chunk)}\n\n`;
-                
+
                 try {
                   controller.enqueue(encoder.encode(sseData));
                 } catch (enqueueError) {
@@ -124,15 +135,14 @@ export async function POST(req: NextRequest) {
                 }
               }
             }
-            
+
             logger.info("Generated response", { fullResponse });
-            
+
             // Only close if controller is still active
             if (controller.desiredSize !== null) {
               controller.enqueue(encoder.encode("data: [DONE]\n\n"));
               controller.close();
             }
-            
           } catch (err) {
             logger.error("Streaming error", err);
             // Only send error if controller is still active
@@ -151,7 +161,7 @@ export async function POST(req: NextRequest) {
         headers: {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
-          "Connection": "keep-alive",
+          Connection: "keep-alive",
         },
       });
     } else {
@@ -163,14 +173,14 @@ export async function POST(req: NextRequest) {
         stream: false,
       } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
       const response = completion.choices[0]?.message?.content;
-      
+
       // Log the response
       logger.info("Generated response", { response });
-      
+
       return NextResponse.json(completion);
     }
   } catch (e) {
     logger.error("Error in chat completions", e);
     return NextResponse.json({ error: e }, { status: 500 });
   }
-};
+}

@@ -24,7 +24,8 @@ const validateEnv = () => {
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
       PINECONE_API_KEY: process.env.PINECONE_API_KEY,
       GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
-      NEXT_PUBLIC_VAPI_PUBLIC_API_KEY: process.env.NEXT_PUBLIC_VAPI_PUBLIC_API_KEY,
+      NEXT_PUBLIC_VAPI_PUBLIC_API_KEY:
+        process.env.NEXT_PUBLIC_VAPI_PUBLIC_API_KEY,
       NEXT_PUBLIC_VAPI_ASSISTANT_ID: process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID,
     };
     const parsed = envSchema.parse(env);
