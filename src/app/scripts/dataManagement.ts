@@ -142,6 +142,7 @@ export async function fetchData(): Promise<RAGChunk[]> {
               
               // Step 2: Create chunks from the cleaned content (no API calls)
               const pageChunks = normalizeAndChunkSync({
+                id: `${page.metadata.sourceURL}-${Date.now()}`,
                 title: page.metadata.title || 'Aven Page',
                 url: page.metadata.sourceURL,
                 content: cleanedContent, // Use cleaned content
@@ -521,10 +522,11 @@ Unlike traditional HELOCs that require separate applications and draw periods, t
 
     // Step 2: Create chunks from cleaned content (no API calls)
     const chunks = normalizeAndChunkSync({
+      id: "test-page",
       title: "Test Page",
       url: "https://test.com",
       content: cleanedContent,
-      source: "test"
+      source: "firecrawl"
     });
 
     console.log("📦 CHUNKS CREATED:");
